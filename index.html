@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>网格看板 · 一期（振幅 / 区间 / 推演）</title>
+<style>
+  :root { --ink:#1a2332; --sub:#5b6b82; --line:#dde4ee; --bg:#f4f6fa; --card:#fff;
+          --blue:#2f6fb3; --red:#c0392b; --green:#1e8449; --amber:#b7791f; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+         background: var(--bg); color: var(--ink); font-size: 14px; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 18px 16px 60px; }
+  h1 { font-size: 20px; margin: 4px 0 2px; }
+  .hint { color: var(--sub); font-size: 12.5px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+          padding: 16px 18px; margin-top: 14px; }
+  .card h2 { font-size: 16px; margin: 0 0 4px; }
+  .card h2 .tag { font-size: 11px; color: #fff; background: var(--blue); border-radius: 4px;
+                  padding: 1px 6px; vertical-align: 2px; margin-left: 6px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; }
+  label.f { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--sub); }
+  select, input[type=number], input[type=text] { font-size: 14px; padding: 6px 8px;
+    border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); min-width: 96px; }
+  button { font-size: 14px; padding: 7px 16px; border: 0; border-radius: 6px; cursor: pointer;
+           background: var(--blue); color: #fff; }
+  button.ghost { background: #e8eef6; color: var(--blue); }
+  button:disabled { opacity: .5; cursor: wait; }
+  .statusbar { display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: baseline;
+               background: #16283f; color: #dfe9f5; border-radius: 10px; padding: 12px 18px; margin-top: 12px; }
+  .statusbar b { color: #fff; font-size: 17px; }
+  .statusbar .err { color: #ffb3a7; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 10px; margin-top: 10px; }
+  .stat { background: #f7f9fc; border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; }
+  .stat .k { font-size: 12px; color: var(--sub); }
+  .stat .v { font-size: 17px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .hist { margin-top: 12px; display: grid; gap: 6px; }
+  .hrow { display: grid; grid-template-columns: 52px 1fr 92px; gap: 10px; align-items: center; font-size: 12.5px; }
+  .hbar { height: 14px; background: #dbe7f5; border-radius: 3px; position: relative; }
+  .hbar i { position: absolute; inset: 0 auto 0 0; background: var(--blue); border-radius: 3px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 10px; font-variant-numeric: tabular-nums; }
+  th, td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: right; font-size: 13px; }
+  th { color: var(--sub); font-weight: 500; font-size: 12px; }
+  td.l, th.l { text-align: left; }
+  .ranges { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; margin-top: 10px; }
+  .range { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; background: #fbfcfe; }
+  .range .nm { font-weight: 600; font-size: 14.5px; }
+  .range .fm { color: var(--sub); font-size: 11.5px; margin: 2px 0 8px; }
+  .range .big { font-size: 16.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .range dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 10px 0 0; font-size: 12.5px; }
+  .range dl dt { color: var(--sub); } .range dl dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+  .flag { display: inline-block; font-size: 11.5px; border-radius: 4px; padding: 1px 7px; margin-top: 8px; }
+  .flag.red { background: #fdecea; color: var(--red); }
+  .flag.amber { background: #fdf6e0; color: var(--amber); }
+  .flag.ok { background: #e8f6ee; color: var(--green); }
+  .neg { color: var(--red); } .pos { color: var(--green); }
+  tr.anchor-row { background: #fdf6e0; font-weight: 600; }
+  .summary { display: flex; flex-wrap: wrap; gap: 10px 26px; background: #f7f9fc; border: 1px solid var(--line);
+             border-radius: 8px; padding: 10px 14px; margin-top: 12px; font-size: 13.5px; }
+  .summary b { font-variant-numeric: tabular-nums; }
+  .foot { color: var(--sub); font-size: 12px; line-height: 1.7; margin-top: 16px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>网格看板 · 一期</h1>
+  <div class="hint">振幅统计 → 区间建议 → 阶梯推演。只读看板，不下单。规划依据：《网格看板规划》v0.2。</div>
+
+  <!-- 顶部状态条 / 数据选择 -->
+  <div class="card">
+    <div class="row">
+      <label class="f">交易对（OKX 永续）
+        <select id="inst">
+          <option>BTC-USDT-SWAP</option>
+          <option>CRCL-USDT-SWAP</option>
+          <option>SOXL-USDT-SWAP</option>
+        </select>
+      </label>
+      <label class="f">K 线周期
+        <select id="bar">
+          <option value="1H">1H</option>
+          <option value="4H" selected>4H</option>
+          <option value="1D">1D</option>
+        </select>
+      </label>
+      <label class="f">范围（天）
+        <select id="days">
+          <option>30</option><option>60</option><option>90</option>
+        </select>
+      </label>
+      <button id="loadBtn">拉取数据并计算</button>
+      <span class="hint" id="loadMsg">页面直接向 OKX 公共接口拉数，不需要密钥。若拉不到，用文件夹里的 fetch_data.py 备用方案（见 README）。</span>
+    </div>
+  </div>
+  <div class="statusbar" id="statusBar">
+    <span>标的 <b id="sbInst">—</b></span>
+    <span>现价 <b id="sbPrice">—</b></span>
+    <span>样本 <span id="sbRange">—</span></span>
+    <span>根数 <span id="sbCount">—</span></span>
+    <span id="sbErr" class="err"></span>
+  </div>
+
+  <!-- 全局参数 -->
+  <div class="card">
+    <h2>全局参数 <span class="tag">影响 M2 / M3</span></h2>
+    <div class="row">
+      <label class="f">保证金（USDT）<input type="number" id="pEquity" value="1000" min="1"></label>
+      <label class="f">杠杆（倍）<input type="number" id="pLev" value="5" min="1" step="0.5"></label>
+      <label class="f">维持保证金率 %<input type="number" id="pMmr" value="0.5" min="0" step="0.1"></label>
+      <label class="f">单边手续费 %<input type="number" id="pFee" value="0.02" min="0" step="0.01"></label>
+      <label class="f">单边滑点 %<input type="number" id="pSlip" value="0.02" min="0" step="0.01"></label>
+      <label class="f">每往返资金费分摊 %<input type="number" id="pFunding" value="0.01" min="0" step="0.01"></label>
+      <label class="f">格距系数（×日均波幅）
+        <select id="pSpacingFactor">
+          <option value="0.25">1/4</option>
+          <option value="0.333333" selected>1/3</option>
+          <option value="0.5">1/2</option>
+        </select>
+      </label>
+      <label class="f">A 法缓冲系数（×日均波幅）<input type="number" id="pBuffer" value="0.5" min="0" step="0.1"></label>
+      <label class="f">投影·激进（天）<input type="number" id="pProjFast" value="4" min="1"></label>
+      <label class="f">投影·稳健（天）<input type="number" id="pProjSlow" value="30" min="1"></label>
+      <button class="ghost" id="recalcBtn">按新参数重算</button>
+    </div>
+    <div class="hint" style="margin-top:8px">往返成本下限 = 2×（手续费+滑点）+ 资金费分摊。建议格距 = max（日均波幅×格距系数，往返成本下限）；前者小于后者时会标黄——原格距不够覆盖成本。</div>
+  </div>
+
+  <!-- M1 振幅统计 -->
+  <div class="card" id="m1Card">
+    <h2>振幅数据 <span class="tag">M1</span></h2>
+    <div class="hint">口径：振幅 =（最高 − 最低）/ 最低；永续 K 线，已收盘根。</div>
+    <div class="stats" id="m1Stats"></div>
+    <div class="hist" id="m1Hist"></div>
+  </div>
+
+  <!-- M2 区间建议 -->
+  <div class="card" id="m2Card">
+    <h2>区间与格距建议 <span class="tag">M2</span></h2>
+    <div class="hint">四个候选区间，公式写在卡片上。强平价为简化估算（现价满仓总名义计），以交易所实际为准；爆仓距离红线按标的日均波幅自行对照手册（日波幅 10%+ 的标的需 30%+）。</div>
+    <div class="ranges" id="m2Ranges"></div>
+  </div>
+
+  <!-- M3 阶梯推演 -->
+  <div class="card" id="m3Card">
+    <h2>阶梯推演（固定区间） <span class="tag">M3</span></h2>
+    <div class="row">
+      <label class="f">方向
+        <select id="lMode">
+          <option value="long">做多网格</option>
+          <option value="short">做空网格</option>
+          <option value="neutral">中性网格</option>
+        </select>
+      </label>
+      <label class="f">区间下沿<input type="number" id="lLower" step="any"></label>
+      <label class="f">区间上沿<input type="number" id="lUpper" step="any"></label>
+      <label class="f">格数<input type="number" id="lGrids" value="40" min="1" max="200"></label>
+      <label class="f">间距类型
+        <select id="lSpacing"><option value="geo">等比</option><option value="arith">等差</option></select>
+      </label>
+      <label class="f">单格名义（USDT）<input type="number" id="lPer" step="any"></label>
+      <label class="f">现价（锚点）<input type="number" id="lStart" step="any"></label>
+      <button id="ladderBtn">生成推演表</button>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <span class="hint">预设：</span>
+      <button class="ghost" id="presetCrcl">CRCL 三台实验（76–96 / 40 格 / 等比）</button>
+      <button class="ghost" id="presetSoxl">SOXL 现有网格（80–105）</button>
+      <button class="ghost" id="fillPerBtn">单格名义 = 保证金×杠杆 ÷ 格数</button>
+    </div>
+    <div class="summary hidden" id="ladderSummary"></div>
+    <div style="overflow-x:auto">
+      <table id="ladderTable" class="hidden">
+        <thead><tr>
+          <th class="l">挡位</th><th>价格</th><th class="l">动作</th>
+          <th>止盈腿（配对格）</th><th>单格往返 毛 / 净</th>
+          <th>多头持仓</th><th>空头持仓</th><th>持仓名义</th>
+          <th>已实现盈亏</th><th>手续费</th><th>浮动盈亏</th><th>合计盈亏</th>
+          <th>净倍数</th><th>距现价 %</th><th>预估强平价（多 / 空）</th>
+        </tr></thead>
+        <tbody id="ladderBody"></tbody>
+      </table>
+    </div>
+    <div class="hint" style="margin-top:8px">
+      推演口径：单格数量固定 = 单格名义 ÷ 现价。做多网格开局按上方卖格数买入底仓（均价=现价），下行逐格加仓、上行逐格卖出；
+      做空镜像；中性开局零仓，下行开多、上行开空。
+      <b>盈亏列是"从现价单边直达这一格"的账</b>：沿途每格成交一次，合计盈亏 = 已实现盈亏 − 手续费 + 到达时剩余仓位的浮动盈亏，未计资金费。
+      <b>止盈腿</b>= 这一格成交后、系统在相邻一格挂出的落袋单（下方各格向上配对、上方各格向下配对）；
+      <b>单格往返</b>= 这一对买卖都成交时的毛利 / 扣双边手续费后的净利（单格数量 × 相邻格价差）。
+      来回震荡的往返收益不在推演内——那是二期回测的事，所以推演表显示的是单边情形，网格真实收益介于推演与回测之间。
+      强平价（逐仓简化估算）：多头（均价×数量−保证金）/（数量×(1−维持率）)，空头（均价×数量+保证金）/（数量×(1+维持率）)；算出 ≤0 表示该仓位下公式上不会强平，记 —。
+    </div>
+  </div>
+
+  <div class="foot">
+    数据来源：OKX 公共接口（K 线 history-candles + ticker 现价），页面本地计算，不上传任何数据。<br>
+    本看板只做统计与推演，不构成开单指令；强平价、爆仓距离均为估算，以 OKX 实际为准。开网格前先回答手册那句话：单边走到底，我死在哪一格？
+  </div>
+</div>
+<script src="grid-core.js"></script>
+<script>
+'use strict';
+var BAR_HOURS = { '1H': 1, '4H': 4, '1D': 24 };
+var state = { candles: [], price: NaN, stats: null, inst: '', bar: '4H' };
+
+function $(id) { return document.getElementById(id); }
+function fmtPrice(x) {
+  if (!isFinite(x)) return '—';
+  var d = x >= 1000 ? 1 : x >= 100 ? 2 : x >= 1 ? 3 : 4;
+  return x.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+function fmtPct(x, d) { return isFinite(x) ? x.toFixed(d == null ? 2 : d) + '%' : '—'; }
+function fmtNum(x, d) { return isFinite(x) ? x.toFixed(d == null ? 2 : d) : '—'; }
+
+function getCtx() {
+  return {
+    price: state.price,
+    leverage: parseFloat($('pLev').value) || 5,
+    equity: parseFloat($('pEquity').value) || 1000,
+    feePct: parseFloat($('pFee').value) || 0,
+    slipPct: parseFloat($('pSlip').value) || 0,
+    fundingSharePct: parseFloat($('pFunding').value) || 0,
+    spacingFactor: parseFloat($('pSpacingFactor').value) || 1 / 3,
+    bufferFactor: parseFloat($('pBuffer').value) || 0,
+    mmr: (parseFloat($('pMmr').value) || 0) / 100,
+    barHours: BAR_HOURS[state.bar] || 4,
+    projFastDays: parseInt($('pProjFast').value) || 4,
+    projSlowDays: parseInt($('pProjSlow').value) || 30
+  };
+}
+
+/* ---------- OKX 拉数 ---------- */
+async function fetchOkxCandles(inst, bar, days) {
+  var need = Math.ceil(days * 24 / BAR_HOURS[bar]) + 2;
+  var byTs = {}, after = null, guard = 0;
+  while (Object.keys(byTs).length < need && guard < 30) {
+    guard++;
+    var url = 'https://www.okx.com/api/v5/market/history-candles?instId=' + encodeURIComponent(inst)
+      + '&bar=' + bar + '&limit=100' + (after ? '&after=' + after : '');
+    var res = await fetch(url);
+    if (!res.ok) throw new Error('OKX 接口 HTTP ' + res.status);
+    var j = await res.json();
+    if (j.code !== '0') throw new Error('OKX 接口返回 ' + j.code + ' ' + (j.msg || ''));
+    var rows = j.data || [];
+    if (!rows.length) break;
+    rows.forEach(function (r) {
+      byTs[r[0]] = { ts: Math.floor(r[0] / 1000), o: +r[1], h: +r[2], l: +r[3], c: +r[4], volQuote: +r[7], confirm: r[8] };
+    });
+    after = rows[rows.length - 1][0];
+    if (rows.length < 100) break;
+  }
+  var all = Object.values(byTs).sort(function (a, b) { return a.ts - b.ts; });
+  var cutoff = Math.floor(Date.now() / 1000) - days * 86400 - BAR_HOURS[bar] * 3600;
+  return all.filter(function (c) { return c.confirm === '1' && c.ts >= cutoff; });
+}
+async function fetchOkxTicker(inst) {
+  var res = await fetch('https://www.okx.com/api/v5/market/ticker?instId=' + encodeURIComponent(inst));
+  var j = await res.json();
+  if (j.code !== '0' || !j.data || !j.data.length) throw new Error('ticker 拉取失败');
+  return +j.data[0].last;
+}
+async function loadLocalData(inst, bar) {
+  var res = await fetch('data/' + inst + '_' + bar + '.json');
+  if (!res.ok) throw new Error('本地数据文件不存在');
+  return await res.json();
+}
+
+/* ---------- 渲染 ---------- */
+function renderStats() {
+  var st = state.stats;
+  var items = [
+    ['平均振幅', fmtPct(st.avgAmplitude)],
+    ['平均顶部', fmtPrice(st.avgHigh)],
+    ['平均底部', fmtPrice(st.avgLow)],
+    ['期间最高', fmtPrice(st.periodHigh)],
+    ['期间最低', fmtPrice(st.periodLow)],
+    ['日均波幅', fmtPct(st.dailyAvgAmplitude)],
+    ['日均成交额', st.dailyAvgTurnover > 0 ? (st.dailyAvgTurnover / 1e6).toFixed(1) + 'M U' : '无数据'],
+    ['样本天数', st.dayCount + ' 天']
+  ];
+  $('m1Stats').innerHTML = items.map(function (it) {
+    return '<div class="stat"><div class="k">' + it[0] + '</div><div class="v">' + it[1] + '</div></div>';
+  }).join('');
+  var keys = [['0-1', '0–1%'], ['1-2', '1–2%'], ['2-3', '2–3%'], ['3+', '3%+']];
+  var max = Math.max.apply(null, keys.map(function (k) { return st.buckets[k[0]]; }));
+  $('m1Hist').innerHTML = keys.map(function (k) {
+    var v = st.buckets[k[0]];
+    var pct = st.count ? (v / st.count * 100).toFixed(1) : '0.0';
+    return '<div class="hrow"><span>振幅 ' + k[1] + '</span>'
+      + '<span class="hbar"><i style="width:' + (max ? v / max * 100 : 0) + '%"></i></span>'
+      + '<span>' + v + ' 根 · ' + pct + '%</span></div>';
+  }).join('');
+}
+
+function renderRanges() {
+  var ctx = getCtx();
+  var ranges = GridCore.candidateRanges(state.stats, ctx);
+  $('m2Ranges').innerHTML = ranges.map(function (r, i) {
+    var flags = '';
+    if (r.costWarning) flags += '<span class="flag amber">格距被成本下限顶起：波幅格距 ' + fmtPct(r.rawSpacingPct) + ' ≤ 往返成本 ' + fmtPct(r.costFloorPct) + '</span>';
+    if (r.longRangeBroken) flags += '<span class="flag red">做多：区间下沿已穿估算强平价</span>';
+    if (r.shortRangeBroken) flags += '<span class="flag red">做空：区间上沿已穿估算强平价</span>';
+    if (!flags) flags = '<span class="flag ok">成本与强平校验通过（估算）</span>';
+    return '<div class="range"><div class="nm">' + r.name + '</div><div class="fm">' + r.formula + '</div>'
+      + '<div class="big">' + fmtPrice(r.lower) + ' ~ ' + fmtPrice(r.upper) + '</div>'
+      + '<dl>'
+      + '<dt>区间宽度</dt><dd>' + fmtPct(r.widthPct) + '</dd>'
+      + '<dt>距现价（下沿 / 上沿）</dt><dd>' + fmtPct(r.distLowerPct) + ' / +' + fmtPct(r.distUpperPct).replace('-', '') + '</dd>'
+      + '<dt>建议格距</dt><dd>' + fmtPct(r.spacingPct) + '</dd>'
+      + '<dt>建议格数</dt><dd>' + r.gridCount + ' 格</dd>'
+      + '<dt>单格名义（总名义 ' + fmtNum(r.totalNotional, 0) + ' U）</dt><dd>' + fmtNum(r.perGridNotional, 1) + ' U</dd>'
+      + '<dt>历史覆盖率</dt><dd>' + fmtPct(r.coveragePct, 1) + '</dd>'
+      + '<dt>爆仓距离（多 / 空，估算）</dt><dd>' + fmtPct(r.liqDistLongPct, 1) + ' / ' + fmtPct(r.liqDistShortPct, 1) + '</dd>'
+      + '</dl>' + flags
+      + '<div style="margin-top:10px"><button class="ghost" data-fill="' + i + '">用此区间填推演</button></div></div>';
+  }).join('');
+  document.querySelectorAll('[data-fill]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var r = ranges[+btn.getAttribute('data-fill')];
+      $('lLower').value = r.lower.toFixed(4);
+      $('lUpper').value = r.upper.toFixed(4);
+      $('lGrids').value = r.gridCount;
+      $('lPer').value = r.perGridNotional.toFixed(2);
+      $('lStart').value = state.price;
+      $('m3Card').scrollIntoView({ behavior: 'smooth' });
+    });
+  });
+}
+
+function renderLadder() {
+  var cfg = {
+    mode: $('lMode').value,
+    lower: parseFloat($('lLower').value),
+    upper: parseFloat($('lUpper').value),
+    grids: parseInt($('lGrids').value) || 40,
+    spacingType: $('lSpacing').value,
+    perGridNotional: parseFloat($('lPer').value),
+    equity: parseFloat($('pEquity').value) || 1000,
+    startPrice: parseFloat($('lStart').value),
+    mmr: (parseFloat($('pMmr').value) || 0) / 100,
+    feePct: parseFloat($('pFee').value) || 0
+  };
+  if (!(cfg.lower > 0 && cfg.upper > cfg.lower && cfg.perGridNotional > 0 && cfg.startPrice > 0)) {
+    alert('推演参数不完整：需要有效的下沿/上沿/单格名义/现价。');
+    return;
+  }
+  var out = GridCore.buildLadder(cfg);
+  var anchor = out.summary.anchorIdx;
+  $('ladderBody').innerHTML = out.rows.map(function (r) {
+    var label = r.idx === anchor ? '现价' : r.idx > anchor ? '上 ' + (r.idx - anchor) : '下 ' + (anchor - r.idx);
+    var liq = (r.liqLong > 0 ? fmtPrice(r.liqLong) : '—') + ' / ' + (r.liqShort > 0 ? fmtPrice(r.liqShort) : '—');
+    var pos = function (q, avg) { return q > 0 ? fmtNum(q, 4) + '（均 ' + fmtPrice(avg) + '）' : '0'; };
+    var pnl = function (v) {
+      var cls = v > 0 ? 'pos' : v < 0 ? 'neg' : '';
+      return '<span class="' + cls + '">' + (v > 0 ? '+' : '') + fmtNum(v) + '</span>';
+    };
+    var pair = r.pairPrice > 0
+      ? (r.pairPrice > r.price ? '↑ ' : '↓ ') + fmtPrice(r.pairPrice)
+      : '—';
+    var pairPnl = r.pairPrice > 0
+      ? '+' + fmtNum(r.pairGross, 3) + ' / +' + fmtNum(r.pairNet, 3)
+      : '—';
+    return '<tr class="' + (r.idx === anchor ? 'anchor-row' : '') + '">'
+      + '<td class="l">' + label + '</td><td>' + fmtPrice(r.price) + '</td><td class="l">' + r.action + '</td>'
+      + '<td>' + pair + '</td><td>' + pairPnl + '</td>'
+      + '<td>' + pos(r.qtyLong, r.avgLong) + '</td><td>' + pos(r.qtyShort, r.avgShort) + '</td>'
+      + '<td>' + fmtNum(r.notional, 0) + '</td>'
+      + '<td>' + pnl(r.realized) + '</td><td>' + fmtNum(r.fees) + '</td>'
+      + '<td>' + pnl(r.unreal) + '</td><td>' + pnl(r.totalPnl) + '</td>'
+      + '<td>' + fmtNum(r.netMultiple) + 'x</td>'
+      + '<td>' + fmtPct(r.distPct) + '</td><td>' + liq + '</td></tr>';
+  }).join('');
+  $('ladderTable').classList.remove('hidden');
+  var s = out.summary;
+  var adverseTxt = cfg.mode === 'short'
+    ? '价格涨到顶格时：强平价（空）<b>' + (s.adverseLiq > 0 ? fmtPrice(s.adverseLiq) : '—') + '</b>，距顶格 <b>' + (s.adverseLiq > 0 ? fmtPct(s.adverseLiqDistPct, 1) : '—') + '</b>'
+    : '价格跌到底格时：强平价（多）<b>' + (s.adverseLiq > 0 ? fmtPrice(s.adverseLiq) : '—') + '</b>，距底格 <b>' + (s.adverseLiq > 0 ? fmtPct(s.adverseLiqDistPct, 1) : '—') + '</b>';
+  var sgn = function (v, d) { return (v > 0 ? '+' : '') + fmtNum(v, d); };
+  var sgnPct = function (v) { return (v > 0 ? '+' : '') + fmtPct(v, 1); };
+  var pnlSpan = function (label, v, pct) {
+    var cls = v > 0 ? 'pos' : v < 0 ? 'neg' : '';
+    return '<span>' + label + ' <b class="' + cls + '">' + sgn(v) + ' U</b>（占保证金 ' + sgnPct(pct) + '）</span>';
+  };
+  $('ladderSummary').innerHTML = pnlSpan('涨到顶格合计盈亏', s.topTotal, s.topTotalPct)
+    + pnlSpan('跌到底格合计盈亏', s.bottomTotal, s.bottomTotalPct)
+    + '<span>最大净倍数 <b>' + fmtNum(s.maxNetMultiple) + 'x</b></span>'
+    + '<span>' + adverseTxt + '</span>'
+    + '<span>满格总名义 <b>' + fmtNum(cfg.perGridNotional * cfg.grids, 0) + ' U</b>（保证金×杠杆 = ' + fmtNum(cfg.equity * (parseFloat($('pLev').value) || 0), 0) + ' U）</span>';
+  $('ladderSummary').classList.remove('hidden');
+}
+
+function recalc() {
+  if (!state.stats) return;
+  renderStats();
+  renderRanges();
+  if (isFinite(state.price) && !$('lStart').value) $('lStart').value = state.price;
+}
+
+/* ---------- 主流程 ---------- */
+async function load() {
+  var inst = $('inst').value, bar = $('bar').value, days = parseInt($('days').value);
+  state.inst = inst; state.bar = bar;
+  $('loadBtn').disabled = true;
+  $('sbErr').textContent = '';
+  $('loadMsg').textContent = '拉取中…';
+  try {
+    var candles;
+    try {
+      candles = await fetchOkxCandles(inst, bar, days);
+      if (!candles.length) throw new Error('OKX 返回空数据');
+    } catch (e) {
+      candles = await loadLocalData(inst, bar);
+      $('loadMsg').textContent = 'OKX 直连失败（' + e.message + '），已改用本地 data/ 数据文件。';
+    }
+    state.candles = candles;
+    try { state.price = await fetchOkxTicker(inst); }
+    catch (e2) { state.price = candles.length ? candles[candles.length - 1].c : NaN; }
+    state.stats = GridCore.amplitudeStats(candles);
+    $('sbInst').textContent = inst;
+    $('sbPrice').textContent = fmtPrice(state.price);
+    $('sbCount').textContent = state.stats.count + ' 根（' + bar + '）';
+    var f = function (ts) { return new Date(ts * 1000).toISOString().slice(0, 10); };
+    $('sbRange').textContent = candles.length ? f(candles[0].ts) + ' ~ ' + f(candles[candles.length - 1].ts) : '—';
+    if ($('loadMsg').textContent === '拉取中…') $('loadMsg').textContent = '完成。换参数后点"按新参数重算"。';
+    recalc();
+  } catch (err) {
+    $('sbErr').textContent = '拉取失败：' + err.message + '。请按 README 的备用方案先跑 fetch_data.py 生成 data/ 文件，再点一次拉取。';
+    $('loadMsg').textContent = '';
+  } finally {
+    $('loadBtn').disabled = false;
+  }
+}
+
+$('loadBtn').addEventListener('click', load);
+$('recalcBtn').addEventListener('click', recalc);
+$('ladderBtn').addEventListener('click', renderLadder);
+$('fillPerBtn').addEventListener('click', function () {
+  var eq = parseFloat($('pEquity').value) || 0, lev = parseFloat($('pLev').value) || 0;
+  var g = parseInt($('lGrids').value) || 1;
+  $('lPer').value = (eq * lev / g).toFixed(2);
+});
+$('presetCrcl').addEventListener('click', function () {
+  $('inst').value = 'CRCL-USDT-SWAP';
+  $('lMode').value = 'long'; $('lLower').value = 76; $('lUpper').value = 96;
+  $('lGrids').value = 40; $('lSpacing').value = 'geo';
+  $('fillPerBtn').click();
+});
+$('presetSoxl').addEventListener('click', function () {
+  $('inst').value = 'SOXL-USDT-SWAP';
+  $('lLower').value = 80; $('lUpper').value = 105;
+  $('fillPerBtn').click();
+});
+</script>
+</body>
+</html>
